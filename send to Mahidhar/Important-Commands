@@ -1,0 +1,149 @@
+​
+alias k=kubectl
+complete -F __start_kubectl k
+export do="-o yaml --dry-run=client"
+
+# Needed
+alias k='kubectl'
+
+# Optional
+alias kgp='kubectl get pods'
+alias kgs='kubectl get svc'
+alias kgc='kubectl get componentstatuses'
+alias kctx='kubectl config current-context'
+alias kcon='kubectl config use-context'
+alias kgc='kubectl config get-context'
+
+((( daemonset has good example of volume)))
+
+# create a service
+kubectl create service clusterip my-service --tcp=8080 --dry-run -o yaml
+
+# create a deployment
+kubectl create deployment nginx --image=nginx --dry-run -o yaml
+
+# create a pod
+kubectl run nginx --image=nginx --restart=Never --dry-run -o yaml
+
+kubectl explain replicaset | grep VERSION
+kubectl run redis --image=redis --dry-run=client -o yaml > redis-pod.yaml
+kubectl scale --replicas=6 replicaset <replicaset-name>
+kubectl run nginx --image=nginx --port=8080
+kubectl run nginx --image=nginx  -l tier=msg --dry-run=client -o yaml
+
+kubectl explain pv --recursive | less
+
+k -n kube-system get pod --show-labels # find labels
+k -n kube-system get pod -l component=kube-scheduler > /opt/course/p3/schedulers.txt
+
+kubectl create deployment  nginx-deploy --image=nginx:1.16
+kubectl set image deployment/nginx-deploy nginx=nginx:1.17 --record  //to record the change of image
+
+kubectl run --restart=Never --image=busybox:1.28.4 static-busybox --dry-run=client -o yaml --command -- sleep 1000
+kubectl get po --selector env=dev,bu=finance  // to select the pods based on selectors
+
+kubectl config use-context k8s-c2-AC
+kubectl config set-context --current --namespace=<insert-namespace-name-here>
+kubectl cluster-info --kubeconfig /root/admin.kubeconfig
+
+// To check IP Table rules
+iptables-save | grep p2-service
+ssh root@cluster1-master1 iptables-save | grep p2-service
+ssh root@cluster1-worker1 iptables-save | grep p2-service
+ssh root@cluster1-worker2 iptables-save | grep p2-service
+
+openssl x509  -noout -text -in /etc/kubernetes/pki/etcd/server.crt | grep Validity -A2
+
+<<Service logs>>
+journalctl -u kubelet
+
+<<< DEPLOYMENTS >>>
+
+kubectl create deployment --image=nginx nginx
+kubectl create deployment --image=nginx nginx --dry-run=client -o yaml
+kubectl create deployment --image=nginx nginx --replicas=4 --dry-run=client -o yaml > nginx-deployment.yaml
+
+###switching the namespaces from default to another
+kubectl config set-context $(kubectl config current-context) --namespace=dev
+
+<<< SERVICE >>>
+
+kubectl expose pod redis --port=6379 --name redis-service --type=ClusterIP --dry-run=client -o yaml
+kubectl create service clusterip redis --name redis-service --tcp=6379:6379 --dry-run=client -o yaml  
+kubectl expose pod nginx --port=80 --name nginx-service --type=NodePort --dry-run=client -o yaml
+kubectl create service nodeport nginx --tcp=80:80 --node-port=30080 --dry-run=client -o yaml
+
+## Secret Command
+kubectl create secret generic db-secret --from-literal=DB_Host=sql01 --from-literal=DB_User=root --from-literal=DB_Password=password123
+
+<<< Taints & Toleration >>>
+
+kubectl taint nodes node01 spray=mortein:NoSchedule
+
+kubectl label nodes node01 color=blue
+
+k run static-busybox --image=busybox --dry-run=client -o yaml --command -- sleep 1000
+
+## RBAC ##
+
+kubectl auth can-i list pods --as dev-user
+
+================================================================================================================
+Commands taken from medium
+================================================================================================================
+
+k run pod1 \
+    -oyaml \
+    --dry-run=client \
+    --image=busybox \
+    --requests "cpu=100m,memory=256Mi" \
+    --limits "cpu=200m,memory=512Mi" \
+    --command \
+    -- sh -c "sleep 1d"
+
+k create deploy deploy1 --image=nginx -oyaml --dry-run=client
+
+k create deploy deploy1 -oyaml --image=busybox --dry-run=client > deploy1.yaml
+k run deploy1 \
+    -oyaml \
+    --dry-run=client \
+    --image=busybox \
+    --requests "cpu=100m,memory=256Mi" \
+    --limits "cpu=200m,memory=512Mi" \
+    --command \
+    -- sh -c "sleep 1d" >> deploy1.yaml
+
+k create job job1 -oyaml --dry-run=client --image=busybox
+
+k create job job1 -oyaml --image=busybox --dry-run=client > job1.yaml
+k run job1 \
+    -oyaml \
+    --dry-run=client \
+    --image=busybox \
+    --requests "cpu=100m,memory=256Mi" \
+    --limits "cpu=200m,memory=512Mi" \
+    --command \
+    -- sh -c "sleep 1d" >> job1.yaml
+
+k create cj cj1 -oyaml --dry-run=client --schedule="* * * * *" --image=busybox
+
+k create cj cj1 -oyaml --dry-run=client --schedule="* * * * *" --image=busybox > cj1.yaml
+k run cj1 \
+    -oyaml \
+    --dry-run=client \
+    --image=busybox \
+    --requests "cpu=100m,memory=256Mi" \
+    --limits "cpu=200m,memory=512Mi" \
+    --command \
+    -- sh -c "sleep 1d" >> cj1.yaml
+
+ k -n management get pod,svc -o jsonpath="{range .items[*]}{.metadata.name}{'\n'}" | wc -l
+
+==================================================================================================
+mock test questions
+==================================================================================================
+
+kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.osImage}'
+kubectl expose deployment hr-web-app --type=NodePort --port=8080 --name=hr-web-app-service --dry-run=client -o yaml (then include nodePort)
+kubectl run --restart=Never --image=busybox static-busybox --dry-run=client -o yaml --command -- sleep 1000
+

@@ -1,0 +1,347 @@
+1. File with commands:
+2. File with node affinity, taints and toleration
+
+
+create an yaml file
+
+kubectl run redis --image=redis --dry-run=client -o yaml > redis-pod.yaml
+
+Kubectl apply -f redis-pod.yaml
+
+kubectl edit pod redis  //changing the pod definition
+
+// to get the correct versions:
+kubectl explain replicaset | grep VERSION
+
+// to select the pods based on selectors
+kubectl get po --selector env=dev 
+
+// mutiple selectors
+kubectl get all --selector env=prod,bu=finance,tier=frontend
+
+// Scalling up the replicas
+kubectl scale --replicas=6 replicaset <replicaset-name>
+
+###POD
+###Create an NGINX Pod
+kubectl run nginx --image=nginx
+
+###Generate POD Manifest YAML file (-o yaml). Don't create it(--dry-run)
+kubectl run nginx --image=nginx  --dry-run=client -o yaml
+
+###Create an NGINX Pod
+kubectl run --generator=run-pod/v1 nginx --image=nginx
+
+###Generate POD Manifest YAML file (-o yaml). Don't create it(--dry-run)
+kubectl run --generator=run-pod/v1 nginx --image=nginx --dry-run -o yaml
+
+###Create a deployment
+kubectl create deployment --image=nginx nginx
+
+###Generate Deployment YAML file (-o yaml). Don't create it(--dry-run)
+kubectl create deployment --image=nginx nginx --dry-run -o yaml
+
+###Generate Deployment YAML file (-o yaml). Don't create it(--dry-run) with 4 Replicas (--replicas=4)
+kubectl create deployment --image=nginx nginx --dry-run -o yaml > nginx-deployment.yaml
+
+###switching the namespaces from default to another
+kubectl config set-context $(kubectl config current-context) --namespace=dev
+
+$$$$$Service$$$$$
+
+###Create a Service named redis-service of type ClusterIP to expose pod redis on port 6379
+kubectl expose pod redis --port=6379 --name redis-service --dry-run=client -o yaml
+(This will automatically use the pod's labels as selectors)
+
+Or
+kubectl create service clusterip redis --name redis-service --tcp=6379:6379 --dry-run=client -o yaml  
+(This will not use the pods labels as selectors, instead it will assume selectors as app=redis. You cannot pass in selectors as an option. So it does not work very well if your pod has a different label set. So generate the file and modify the selectors before creating the service)
+
+
+###Create a Service named nginx of type NodePort to expose pod nginx's port 80 on port 30080 on the nodes:
+kubectl expose pod nginx --port=80 --name nginx-service --type=NodePort --dry-run=client -o yaml
+
+(This will automatically use the pod's labels as selectors, but you cannot specify the node port. You have to generate a definition file and then add the node port in manually before creating the service with the pod.)
+
+Or
+
+kubectl create service nodeport nginx --tcp=80:80 --node-port=30080 --dry-run=client -o yaml
+(This will not use the pods labels as selectors)
+
+## Secret Command
+kubectl create secret generic db-secret --from-literal=DB_Host=sql01 --from-literal=DB_User=root --from-literal=DB_Password=password123
+
+%%% Taint & Tolerant %%%
+
+kubectl taint nodes node-name key=value:taint-effect
+kubectl taint nodes node01 app=blue:(Noschedule|PreferNoSchedule|NoExecute)
+
+###Removing the taint on Master/controlplane
+kubectl taint nodes master/controlplane node-role.kubernetes.io/master:NoSchedule-
+
+
+### Labelling the nodes
+kubectl label nodes node01 color=blue
+
+
+### Static pods
+### Manifest files are stored 
+pod-manifest-path in kubelet.service file
+or
+staticPodPath in kubeconfig.yaml
+
+Example: "/etc/kubernetes/manifests" folder in node, then kubelet will automatically create the pods without any scheduler or API Server
+
+### Only pods can be created, RS, DEPLOYs cannot be created by placing in designated folder
+
+****
+### To check the pod-manifest-path for static pods
+Run the command ps -aux | grep kubelet and identify the config file - --config=/var/lib/kubelet/config.yaml. Then checkin the config file for staticPdPath.
+
+###static pod created by imperative command
+kubectl run --restart=Never --image=busybox:1.28.4 static-busybox --dry-run=client -o yaml --command -- sleep 1000 > /etc/kubernetes/manifests/static-busybox.yaml
+
+###  METRIC-SERVER ###
+### Clone the manifest files form https://github.com/kodekloudhub/kubernetes-metrics-server.git
+
+kubectl top node
+kubectl top pod
+
+
+###  APPLICATION LIFECYCLE MANAGEMENT ###
+
+##curl-sh
+for i in {1..35}; do
+   kubectl exec --namespace=kube-public curl -- sh -c 'test=`wget -qO- -T 2  http://webapp-service.default.svc.cluster.local:8080/info 2>&1` && echo "$test OK" || echo "Failed"';
+   echo ""
+
+#Rollout Commands
+#Status
+kubectl rollout status deployment/my-deploy
+
+#History of Deployment
+kubectl rollout history deployment/my-deploy
+
+#Deployment Strategies
+
+#Recreate - Delete all the pods and recreate with new version
+#RollingUpdates - Take down and bringup new version one by one (Default strategy)
+
+## Undo the deployment
+kubectl rollout undo deployment/myapp-deployment
+
+
+### CLUSTER MAINTENANCE ###
+
+#To drain a node
+kubectl drain node-01
+
+# After draining, pods on that node will be terminated and re-created on another node
+# Also, makes the node unschedulable
+
+# To make node schedulable after upgrading work
+kubectl uncordon node-01
+
+# pods which are deleted from node-01 during drain will not automatically re-created once the node is up
+
+# To make node unschedulable without draining the node
+kubectl cordon node-02
+
+### UPGRADING THE KUBELET VERSIONS ###
+
+apt-get upgrade -y kubeadm=1.12.0-00
+apt-get upgrade -y kubelet=1.12.0-00
+kubeadm upgrade node config --kubelet-version=1.12.0
+systemctl restart kubelet
+
+### if you hit dependency issue while running the apt-get upgrade kubelet command, use the apt install kubelet=1.18.0-00 command instead
+
+apt install kubeadm=1.18.0-00 
+kubeadm upgrade apply v1.18.0 
+apt install kubelet=1.18.0-00
+
+//
+
+kubeadm upgrade plan
+kubectl drain master --ignore-daemonsets // drains the master node and make it unschedulable
+
+
+### BACKUP AND RESTORE METHODS ###
+
+# Taking the backup of all resources using API-SERVER
+kubectl get all --all-namespaces -o yaml > all-resources.yaml
+
+# Taking backup of ETCD
+
+etcdctl snapshot save snapshot.db
+etcdctl snapshot status snapshot.db
+service kube-apiserver stop # we need to stop the API-SERVER before restoring etcd
+etcdctl snapshot restore snapshot.db
+
+
+/tmp/snapshot-pre-boot.db
+etcdctl snapshot save /tmp/snapshot-pre-boot.db
+etcdctl snapshot status /tmp/snapshot-pre-boot.db
+
+ETCDCTL_API=3 etcdctl --endpoints=https://[127.0.0.1]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key snapshot save /tmp/snapshot-pre-boot.db
+
+#Restoring:
+ETCDCTL_API=3 etcdctl --endpoints=https://[127.0.0.1]:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+     --name=master \
+     --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key \
+     --data-dir /var/lib/etcd-from-backup \
+     --initial-cluster=master=https://127.0.0.1:2380 \
+     --initial-cluster-token=etcd-cluster-1 \
+     --name="master"\
+     --initial-advertise-peer-urls=https://127.0.0.1:2380 \
+     snapshot restore /tmp/snapshot-pre-boot.db
+
+
+###  SECURITY ###
+
+# Creating a key
+openssl genrsa -out sasi.key 2048
+
+# creating csr (certificate sigining request)
+openssl req -new -key sasi.key -subj "/CN=SASI" -out sasi.csr
+
+# Checking the list of csr
+kubectl csr
+
+# Approve the pedning csr
+kubectl certificate approve <csr-name>
+
+# Reject/Deny the pedning csr
+kubectl certificate deny <csr-name>
+
+## Important
+openssl x509 -in <file-path.crt> -text -noout
+
+openssl x509 -req -in sasi.scr -signkey sasi.key -out sasi.crt   --> signing the ca certificate
+
+##CONTEXT##
+
+kubectl config -h
+
+kubectl config view
+
+kubectl config use-context  <context-name>
+
+kubectl config 
+
+##RBAC##
+
+ROLES - to define a role for each service (pods,configmaps, secrets, deploy etc)
+ROLEBINDINGS - to map the role with users
+clusterrole - 
+
+# To view the access of the user
+kubectl auth can-i create deploy  (or) kubectl auth can-i delete nodes etc
+
+# to test the auth of different user
+kubectl auth can-i create deploy --as user2
+
+# to get the api-resources
+kubectl api-resources
+
+# Creating docker registery secrets:
+kubectl create secret docker-registry private-reg-cred --docker-username=dock_user --docker-password=dock_password --docker-server=myprivateregistry.com:5000 --docker-email=dock_user@myprivateregistry.com
+
+
+### NETWORK ###
+
+# Handy Commands
+ <IP SWITCHING>
+ ip link
+ ip addr
+ ip link show <link-name>
+ arp
+ route - to know the routing configurations
+ ip route add <dest-network> via nat IP
+ Ex: ip route add 192.168.1.0/24 via 192.168.2.1 
+ ip route show default --> to show the default gateway
+ By defaults packets are not forwarded from one two another (ex: eth0 to eth1)
+ We need to enable the ip_forward [/proc/sys/net/ipv4/ip_forward] 0 -> no forward 1-> allow forward
+
+ <DNS>
+ How do we point host to a DNS server
+ etc/resolve.conf  -> helps in configuring the IP of DNS server in host
+ first looks in local etc/hosts then dns server mentioned in resolve.conf [can switch this order etc/nsswich.conf]
+
+ netstat -nplt  --> to list the listening ports
+ netstat -anp | grep etcd
+ ip addr show --> to show the POD IP address range
+
+ ## CNI in K8S ##
+ ps -aux | grep kubelet --> To know the cni default paths
+ ls /opt/cni/bin       --> To know the list of CNIs
+ ls /etc/cni/net.d/    --> To know the CNI plugin configuration
+ 
+ kubectl logs <weave-pod-name> weave -n kube-system   // check for ip-alloc-range to know the IP range
+ cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep cluster-ip-range // to know the service IP range
+
+ ## Installing weave Net onto CNI enabled k8s
+ kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+
+#From the hr pod nslookup the mysql service and redirect the output to a file /root/nslookup.out
+ kubectl exec -it hr nslookup mysql.payroll > /root/nslookup.out
+
+
+# Creating Ingress
+ kubectl create ns ingress-space
+ kubectl create configmap nginx-configuration -n ingress-space
+ kubectl create serviceaccount ingress-serviceaccount --namespace ingress-space
+
+ kubectl expose deployment -n ingress-space ingress-controller --type=NodePort --port=80 --name=ingress --dry-run -o yaml >ingress.yaml
+
+ ### TROUBLESHOOTING ###
+
+ # Application #
+ curl http://web-service-ip:node-port
+
+ kubectl logs <pod-name> -f --previous --> to check the logs of a previous pod after restarting
+ kubectl apply --validate -f mypod.yaml
+ kubectl get endpoints ${SERVICE_NAME}  -> to check if svcs have endpoints
+
+
+ Check the deployment, DB_Host, User, Passwd
+ Check the service names
+ Check the 
+ Check the service ports port and target port
+ 
+ # Control-Plane failures #
+
+ # If control plane is deployed as pods
+ k get all -n kube-system
+
+ # If deployed as services
+ service kube-apiserver status
+ service kube-controller-manager status
+ service kube-scheduler status
+ service kubelet status   --> on worker nodes
+ service kube-proxy status --> on worker nodes
+
+ # Checking Logs:
+
+ # if deployed as pods - kubeadm
+ k logs kube-apiserver-master -n kube-system
+
+ # if deployed as services
+ sudo journalctl -u kube-apiserver
+
+# Worker node failures #
+
+## kubectl jsonpath ##
+
+kubectl get nodes -o=jsonpath='{.items[*].metadata.name}' > /opt/outputs/node_names.txt
+
+kubectl config view --kubeconfig=/root/my-kube-config  --> To view the custom kubeconfig file
+
+kubectl get pv -o=custom-columns=NAME:.metadata.name,CAPACITY:.spec.capacity.storage  --sort-by=.spec.capacity.storage > /opt/outputs/pv-and-capacity-sorted.txt
+
+kubectl config view --kubeconfig=/root/my-kube-config  -o=jsonpath='{ .contexts[?(@.context.user == "aws-user")].name }'
+
+k get deploy -n admin2406 -o=custom-columns=DEPLOYMENT:.metadata.name,CONTAINER_IMAGE:.spec.template.spec.containers[0].image,READY_REPLICAS:.status.readyReplicas,NAMESPACE:.metadata.namespace --sort-by=.metadata.name
+
+
+kubectl create deployment nginx --image=nginx -o yaml --dry-run=client

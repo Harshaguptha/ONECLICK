@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+  namespace: default
+
+spec:
+   type: NordPort
+   ports:
+   	- targetPort: 80
+   	  port: 80
+   	  NordPort: 30008
+   selector:
+     app: myapp        //label section of the pod
+     type: front-end 
+

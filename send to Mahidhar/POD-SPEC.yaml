@@ -1,0 +1,292 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+
+---
+# VolumeMounts example
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+      volumeMounts:
+      - mountPath: /opt
+        name: data-volume
+
+  volumes:
+  - name: data-volume
+    hostPath: 
+       path: /data
+       type: Directory
+
+  - name: EBS-Volume
+    awsElasticBlockStore:
+      volumeId: <volume-id>
+      fsType: ext4
+
+  - name: data-volume
+    persistentVolumeClaim:
+      claimName: claim-log-1
+
+---
+# persistent Volumes
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-vol-1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 2Gi
+  
+  hostPath:
+    path: /tmp/data
+  # or
+  awsElasticBlockStore:
+    volumeId: <volume-id>
+    fsType: ext4  
+
+---
+# persistent Volume Claim
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc-1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 900Mi
+---
+# Init Container example
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+  - name: myapp-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'echo The app is running! && sleep 3600']
+  initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c', 'git clone <some-repository-that-will-be-used-by-application> ; done;']
+
+---
+# Added env variables and command
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+      command:
+      - sleep
+      - "1000"
+      env:
+        - name: APP_COLOR
+          value: blue
+      
+      # Single Env variable from config file
+      env:
+        - name: APP_COLOR
+          valueFrom:
+            configMapKeyRef:
+              name: app_config
+              key: APP_COLOR
+
+      # all env variables form config or secret
+      envFrom:  
+          configMapRef:
+            name: webapp-config-map
+        
+          secretRef:
+            name: app-secret
+
+---
+# Added toleration
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+
+  tolerations:
+  - key: "app"
+    operator: "Equal"
+    value: "blue"
+    effect: "NoSchedule"
+
+---
+# Added nodeSelector
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+
+  nodeSelector:
+    size: Medium   #Need to label the node with size for the schedule to understand this selector
+
+---
+# Added nodeAffinity
+# nodeSelector cannot have operator to decide between more than 1 node
+
+# requiredDuringschedulingIgnoreDuringExecution
+# preferredDuringschedulingIgnoreDuringExecution
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+
+  affinity:
+    nodeAffinity:
+      requiredDuringschedulingIgnoreDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: size
+            operator: In
+            values:
+            - Large
+              Medium
+
+
+---
+# Added requests and limit
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-webapp
+  labels:
+    app: front-end
+spec:
+  containers:
+    - name: nginx-webapp
+      image: nginx
+      resources:
+        requests:
+          memory: "1Gi"  # 1G | 1M | 1K or 1Gi ... 1K = 1000 bytes |1Ki = 1024 bytes
+          cpu: 1   #1 or 0.5 or 0.1|100m
+        limits:
+          memory: 
+          cpu: 
+
+# once the limit is set, container cannot use more cpu than the limit
+# but, container can consume more memory than the limit, in such case, pod will be terminated.
+
+---
+
+# CSR object
+
+
+apiVersion: certificates.k8s.io/v1beta1
+kind: CertificateSigningRequest
+metadata:
+  name: akshay
+spec:
+  groups:
+  - system:authenticated
+  request: LS0tLS1CRUdJTiB...IENFUlRJRklDQVRFIFJFUVVFU1QtLS0tLQo=
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+
+
+---
+
+# Ingress
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+  namespace: app-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /wear
+        backend:
+          serviceName: wear-service
+          servicePort: 8080
+      - path: /watch
+        backend:
+          serviceName: video-service
+          servicePort: 8080
+
+---
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-container-test
+spec:
+  containers:
+  - name: application-container
+    image: alpine
+    command: ['sh', '-c', 'if [ -f /work/sharedfile.txt ]; then sleep 99999; else exit; fi']
+    volumeMounts:
+    - name: workdir-volume
+      mountPath: /work
+  initContainers:
+  - name: init-container
+    image: busybox:1.28
+    command: ['sh', '-c', 'mkdir /work; echo>/work/sharedfile.txt']
+    volumeMounts:
+    - name: workdir-volume
+      mountPath: /work
+  volumes:
+  - name: workdir-volume
+    emptyDir: {}
